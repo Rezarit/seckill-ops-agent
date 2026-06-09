@@ -1,0 +1,51 @@
+# https://goframe.org/docs/web/server-config-file-template
+server:
+  address: ":8000"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+# https://goframe.org/docs/core/glog-config
+logger:
+  level: "all"
+  stdout: true
+
+doubao_think_chat_model:
+  api_key: "ark-bf1202eb-69fb-4d76-b139-66e3c8f13af1-44045"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-seed-2-0-mini-260428"
+
+doubao_quick_chat_model:
+  api_key: "ark-bf1202eb-69fb-4d76-b139-66e3c8f13af1-44045"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-seed-2-0-mini-260428"
+
+doubao_embedding_model:
+  api_key: "sk-f57384ea9da840ba8b2a8d9728a89f8c"
+  base_url: "https://dashscope.aliyuncs.com/api/v1"
+  model: "text-embedding-v4"
+  embedding_dim: 1024
+
+# DeepSeek 思考模型（用于复杂推理任务）
+ds_think_chat_model:
+  api_key: "sk-xxxxxx"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "deepseek-v3-1-terminus"
+
+# DeepSeek 快速模型（用于快速响应任务）
+ds_quick_chat_model:
+  api_key: "sk-xxxxxx"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "deepseek-v3-1-terminus"
+
+file_dir: "e:/Go/Works/SuperBizAgent-release-2026-05-19/internal/ai/cmd/knowledge_cmd/docs"
+
+# MCP 工具 URL（腾讯云托管 MCP 已下架，使用本地部署方案）
+mcp_url: "http://localhost:3000/sse"
+
+# 秒杀系统数据库配置
+seckill_database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "fzfz1314"
+  dbname: "go_seckill_system"

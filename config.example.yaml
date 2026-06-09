@@ -1,0 +1,38 @@
+# SuperBizAgent 配置文件示例
+# 复制此文件为 config.yaml 并填写实际配置
+
+server:
+  address: ":6872"
+
+logger:
+  level: "info"
+  stdout: true
+
+# 豆包聊天模型配置
+doubao_think_chat_model:
+  api_key: "your-doubao-api-key"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-seed-2-0-mini-260428"
+
+doubao_quick_chat_model:
+  api_key: "your-doubao-api-key"
+  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-seed-2-0-mini-260428"
+
+# 豆包嵌入模型配置
+doubao_embedding_model:
+  api_key: "your-dashscope-api-key"
+  base_url: "https://dashscope.aliyuncs.com/api/v1"
+  model: "text-embedding-v4"
+  embedding_dim: 1024
+
+# 文档目录
+file_dir: "./docs"
+
+# 秒杀系统数据库配置
+seckill_database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "your-db-password"
+  dbname: "go_seckill_system"
