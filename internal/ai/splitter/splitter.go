@@ -7,6 +7,77 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// ChunkStrategy 分块策略枚举
+type ChunkStrategy int
+
+const (
+	StrategyMarkdown      ChunkStrategy = iota // 按 Markdown 标题分块
+	StrategySlidingWindow                      // 滑动窗口分块
+	StrategyParagraph                          // 按段落分块
+)
+
+// SlidingWindowSplitter 滑动窗口分块器
+type SlidingWindowSplitter struct {
+	chunkSize   int // 块大小（字符数）
+	overlapSize int // 重叠大小（字符数）
+}
+
+// NewSlidingWindowSplitter 创建滑动窗口分块器
+func NewSlidingWindowSplitter(chunkSize, overlapSize int) *SlidingWindowSplitter {
+	return &SlidingWindowSplitter{
+		chunkSize:   chunkSize,
+		overlapSize: overlapSize,
+	}
+}
+
+func (s *SlidingWindowSplitter) SplitText(ctx context.Context, text string, meta map[string]any) ([]*schema.Document, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return []*schema.Document{}, nil
+	}
+
+	var docs []*schema.Document
+	start := 0
+	textLen := len(text)
+	chunkIndex := 0
+
+	for start < textLen {
+		end := min(start+s.chunkSize, textLen)
+		chunk := text[start:end]
+
+		if strings.TrimSpace(chunk) != "" {
+			docMeta := make(map[string]any)
+			for k, v := range meta {
+				docMeta[k] = v
+			}
+			docMeta["chunk_index"] = chunkIndex
+			docMeta["start_pos"] = start
+			docMeta["end_pos"] = end
+
+			docs = append(docs, &schema.Document{
+				Content:  strings.TrimSpace(chunk),
+				MetaData: docMeta,
+			})
+			chunkIndex++
+		}
+
+		if start+s.chunkSize >= textLen {
+			break
+		}
+		start += s.chunkSize - s.overlapSize
+	}
+
+	return docs, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// MarkdownSplitter Markdown 分块器
 type MarkdownSplitter struct {
 	splitFunc func(text string) []string
 }
@@ -39,6 +110,38 @@ func (s *MarkdownSplitter) SplitText(ctx context.Context, text string, meta map[
 	}
 
 	return docs, nil
+}
+
+// ConfigurableSplitter 可配置分块器
+type ConfigurableSplitter struct {
+	strategy    ChunkStrategy
+	chunkSize   int
+	overlapSize int
+}
+
+// NewConfigurableSplitter 创建可配置分块器
+func NewConfigurableSplitter(strategy ChunkStrategy, chunkSize, overlapSize int) *ConfigurableSplitter {
+	return &ConfigurableSplitter{
+		strategy:    strategy,
+		chunkSize:   chunkSize,
+		overlapSize: overlapSize,
+	}
+}
+
+func (s *ConfigurableSplitter) SplitText(ctx context.Context, text string, meta map[string]any) ([]*schema.Document, error) {
+	switch s.strategy {
+	case StrategySlidingWindow:
+		splitter := NewSlidingWindowSplitter(s.chunkSize, s.overlapSize)
+		return splitter.SplitText(ctx, text, meta)
+	case StrategyMarkdown:
+		splitter := NewMarkdownSplitter()
+		return splitter.SplitText(ctx, text, meta)
+	case StrategyParagraph:
+		return splitByParagraphsWithMeta(ctx, text, meta)
+	default:
+		splitter := NewSlidingWindowSplitter(s.chunkSize, s.overlapSize)
+		return splitter.SplitText(ctx, text, meta)
+	}
 }
 
 // splitByHeaders 按 Markdown 标题分割文本
@@ -120,6 +223,28 @@ func SplitByLines(text string, linesPerChunk int) []string {
 	}
 
 	return chunks
+}
+
+// splitByParagraphsWithMeta 按段落分块（带元数据）
+func splitByParagraphsWithMeta(ctx context.Context, text string, meta map[string]any) ([]*schema.Document, error) {
+	paragraphs := strings.Split(text, "\n\n")
+	var docs []*schema.Document
+
+	for i, p := range paragraphs {
+		if strings.TrimSpace(p) != "" {
+			docMeta := make(map[string]any)
+			for k, v := range meta {
+				docMeta[k] = v
+			}
+			docMeta["chunk_index"] = i
+
+			docs = append(docs, &schema.Document{
+				Content:  strings.TrimSpace(p),
+				MetaData: docMeta,
+			})
+		}
+	}
+	return docs, nil
 }
 
 // SplitByParagraphs 按空行分割（段落策略）

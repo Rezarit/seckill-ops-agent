@@ -123,9 +123,10 @@ func main() {
 
 		fmt.Printf("[Info] 文件读取成功，内容长度: %d\n", len(text))
 
-		// 2. 分块
-		mdSplitter := splitter.NewMarkdownSplitter()
-		chunks, err := mdSplitter.SplitText(ctx, text, map[string]any{"source": normalizedPath})
+		// 2. 分块（使用滑动窗口策略）
+		// 块大小：1000 字符，重叠：200 字符
+		windowSplitter := splitter.NewConfigurableSplitter(splitter.StrategySlidingWindow, 1000, 200)
+		chunks, err := windowSplitter.SplitText(ctx, text, map[string]any{"source": normalizedPath})
 		if err != nil {
 			fmt.Printf("[Error] 分块失败: %v\n", err)
 			return err

@@ -19,18 +19,41 @@ var (
 	milvusClient     *milvusclient.Client // 全局单例 Milvus 客户端
 	milvusClientOnce sync.Once            // 确保只初始化一次
 	milvusClientErr  error                // 初始化错误
+	milvusClientMu   sync.RWMutex         // 客户端访问锁
 )
 
 // GetMilvusClient 获取全局单例 Milvus 客户端
-// 使用 sync.Once 确保线程安全的惰性加载
+// 如果首次初始化失败，支持重试连接
 func GetMilvusClient(ctx context.Context) (*milvusclient.Client, error) {
+	// 快速路径：检查是否已有有效客户端
+	milvusClientMu.RLock()
+	client := milvusClient
+	err := milvusClientErr
+	milvusClientMu.RUnlock()
+
+	if client != nil && err == nil {
+		return client, nil
+	}
+
+	// 需要初始化或重试
+	milvusClientMu.Lock()
+	defer milvusClientMu.Unlock()
+
+	// 双重检查
+	if milvusClient != nil && milvusClientErr == nil {
+		return milvusClient, nil
+	}
+
+	// 允许重试：重置错误状态
+	milvusClientOnce = sync.Once{}
+
 	milvusClientOnce.Do(func() {
-		config.Info("[Milvus Client] ========== 首次初始化 Milvus 客户端（全局单例）==========")
+		config.Info("[Milvus Client] ========== 初始化 Milvus 客户端（支持重试）==========")
 		milvusClient, milvusClientErr = initMilvusClient(ctx)
 		if milvusClientErr != nil {
-			config.Error("[Milvus Client] 全局客户端初始化失败: %v", milvusClientErr)
+			config.Error("[Milvus Client] 客户端初始化失败: %v", milvusClientErr)
 		} else {
-			config.Info("[Milvus Client] 全局客户端初始化成功")
+			config.Info("[Milvus Client] 客户端初始化成功")
 		}
 	})
 	return milvusClient, milvusClientErr

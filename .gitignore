@@ -1,20 +1,34 @@
-.buildpath
-.hgignore.swp
-.project
-.orig
-.swp
-.idea/
-.settings/
-.vscode/
-bin/
-**/.DS_Store
-gf
-main
-main.exe
-output/
-manifest/output/
-temp/
-temp.yaml
-bin
+# 测试数据目录
+internal/ai/cmd/knowledge_cmd/docs/error_logs/
 
-manifest/docker/volumes
+# 测试报告文件
+test_report.md
+test_report_result.md
+
+# 测试命令（保留，作为项目的一部分）
+# cmd/generate_logs/ 和 cmd/test_agent/ 已保留，不排除
+
+# Go 编译产物
+*.exe
+*.dll
+*.so
+*.a
+__debug_bin
+
+# 临时文件
+*.tmp
+*.temp
+
+# 日志文件
+*.log
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db

@@ -23,18 +23,41 @@ var (
 	milvusRetriever     retriever.Retriever // 全局单例检索器
 	milvusRetrieverOnce sync.Once           // 确保只初始化一次
 	milvusRetrieverErr  error               // 初始化错误
+	milvusRetrieverMu   sync.RWMutex        // 检索器访问锁
 )
 
 // GetMilvusRetriever 获取全局单例 Milvus Retriever
-// 使用 sync.Once 保证线程安全的懒加载
+// 如果首次初始化失败，支持重试连接
 func GetMilvusRetriever(ctx context.Context) (retriever.Retriever, error) {
+	// 快速路径：检查是否已有有效检索器
+	milvusRetrieverMu.RLock()
+	rtr := milvusRetriever
+	err := milvusRetrieverErr
+	milvusRetrieverMu.RUnlock()
+	
+	if rtr != nil && err == nil {
+		return rtr, nil
+	}
+	
+	// 需要初始化或重试
+	milvusRetrieverMu.Lock()
+	defer milvusRetrieverMu.Unlock()
+	
+	// 双重检查
+	if milvusRetriever != nil && milvusRetrieverErr == nil {
+		return milvusRetriever, milvusRetrieverErr
+	}
+	
+	// 允许重试：重置错误状态
+	milvusRetrieverOnce = sync.Once{}
+	
 	milvusRetrieverOnce.Do(func() {
-		config.Info("[Retriever] ========== 首次初始化 Milvus Retriever（全局单例）==========")
+		config.Info("[Retriever] ========== 初始化 Milvus Retriever（支持重试）==========")
 		milvusRetriever, milvusRetrieverErr = initMilvusRetriever(ctx)
 		if milvusRetrieverErr != nil {
-			config.Error("[Retriever] 全局 Retriever 初始化失败: %v", milvusRetrieverErr)
+			config.Error("[Retriever] Retriever 初始化失败: %v", milvusRetrieverErr)
 		} else {
-			config.Info("[Retriever] 全局 Retriever 初始化成功")
+			config.Info("[Retriever] Retriever 初始化成功")
 		}
 	})
 	return milvusRetriever, milvusRetrieverErr
