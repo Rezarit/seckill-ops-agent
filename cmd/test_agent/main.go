@@ -29,10 +29,12 @@ var testResults = struct {
 }
 
 type RAGTestResult struct {
-	Question      string
-	ExpectedTopic string
-	HasRelevant   bool
-	ResponseTime  float64
+	Question        string
+	ExpectedTopic   string
+	ExpectedAnswers []string
+	HasRelevant     bool
+	RecallCount     int
+	ResponseTime    float64
 }
 
 type ToolTestResult struct {
@@ -42,21 +44,22 @@ type ToolTestResult struct {
 	ResponseTime float64
 }
 
-// RAG 测试问题
+// RAG 测试问题 - 包含预期答案关键词用于计算召回率
 var ragQuestions = []struct {
-	Question      string
-	ExpectedTopic string
+	Question        string
+	ExpectedTopic   string
+	ExpectedAnswers []string
 }{
-	{"数据库连接池耗尽怎么解决？", "数据库连接池"},
-	{"Redis连接超时的原因是什么？", "Redis连接超时"},
-	{"库存扣减失败怎么处理？", "库存扣减"},
-	{"限流组件的限流阈值怎么调整？", "限流"},
-	{"消息队列发送失败怎么办？", "消息队列"},
-	{"用户认证失败的原因？", "用户认证"},
-	{"缓存击穿问题如何解决？", "缓存击穿"},
-	{"配置中心拉取失败怎么处理？", "配置中心"},
-	{"监控指标上报失败的原因？", "监控服务"},
-	{"支付回调超时的解决方案？", "支付回调"},
+	{"数据库连接池耗尽怎么解决？", "数据库连接池", []string{"连接池", "最大连接数", "空闲连接", "连接复用"}},
+	{"Redis连接超时的原因是什么？", "Redis连接超时", []string{"网络延迟", "连接池", "超时时间", "防火墙"}},
+	{"库存扣减失败怎么处理？", "库存扣减", []string{"乐观锁", "悲观锁", "库存不足", "事务"}},
+	{"限流组件的限流阈值怎么调整？", "限流", []string{"QPS", "阈值", "令牌桶", "漏桶"}},
+	{"消息队列发送失败怎么办？", "消息队列", []string{"重试", "死信队列", "消息持久化", "ACK"}},
+	{"用户认证失败的原因？", "用户认证", []string{"token", "JWT", "签名", "过期"}},
+	{"缓存击穿问题如何解决？", "缓存击穿", []string{"热点key", "互斥锁", "缓存预热", "布隆过滤器"}},
+	{"配置中心拉取失败怎么处理？", "配置中心", []string{"重试机制", "本地缓存", "配置热更新", "服务发现"}},
+	{"监控指标上报失败的原因？", "监控服务", []string{"网络问题", "指标格式", "服务不可用", "超时"}},
+	{"支付回调超时的解决方案？", "支付回调", []string{"重试", "幂等性", "异步通知", "消息队列"}},
 }
 
 // 工具调用测试问题
@@ -95,16 +98,22 @@ func main() {
 	fmt.Println("【1. RAG 检索测试】")
 	fmt.Println("执行 10 个文档检索测试...")
 	ragCorrect := 0
+	totalRecallCount := 0
+	totalExpectedKeywords := 0
 	for i, q := range ragQuestions {
 		fmt.Printf("测试 %d/%d: %s\n", i+1, len(ragQuestions), q.Question)
-		result := testRAGRetrieval(baseURL, q.Question, q.ExpectedTopic)
+		result := testRAGRetrieval(baseURL, q.Question, q.ExpectedTopic, q.ExpectedAnswers)
 		testResults.RAGTests = append(testResults.RAGTests, result)
 		if result.HasRelevant {
 			ragCorrect++
 		}
+		totalRecallCount += result.RecallCount
+		totalExpectedKeywords += len(q.ExpectedAnswers)
 	}
 	ragAccuracy := float64(ragCorrect) / float64(len(ragQuestions)) * 100
-	fmt.Printf("\nRAG 检索准确率: %.1f%% (%d/%d)\n\n", ragAccuracy, ragCorrect, len(ragQuestions))
+	ragRecall := float64(totalRecallCount) / float64(totalExpectedKeywords) * 100
+	fmt.Printf("\nRAG 检索准确率: %.1f%% (%d/%d)\n", ragAccuracy, ragCorrect, len(ragQuestions))
+	fmt.Printf("RAG 检索召回率: %.1f%% (%d/%d)\n\n", ragRecall, totalRecallCount, totalExpectedKeywords)
 
 	// 2. 工具调用测试
 	fmt.Println("【2. 工具调用测试】")
@@ -131,7 +140,7 @@ func main() {
 	generateReport()
 }
 
-func testRAGRetrieval(baseURL, question, expectedTopic string) RAGTestResult {
+func testRAGRetrieval(baseURL, question, expectedTopic string, expectedAnswers []string) RAGTestResult {
 	start := time.Now()
 
 	reqBody := ChatRequest{
@@ -146,20 +155,31 @@ func testRAGRetrieval(baseURL, question, expectedTopic string) RAGTestResult {
 	var result RAGTestResult
 	result.Question = question
 	result.ExpectedTopic = expectedTopic
+	result.ExpectedAnswers = expectedAnswers
 	result.ResponseTime = responseTime
 	result.HasRelevant = false
+	result.RecallCount = 0
 
 	if err == nil {
 		defer resp.Body.Close()
 		var chatResp ChatResponse
 		json.NewDecoder(resp.Body).Decode(&chatResp)
 
-		// 检查答案是否包含相关主题
-		if len(chatResp.Answer) > 0 {
-			// 简单判断：如果答案长度合理且不是空响应，认为是相关检索
-			result.HasRelevant = len(chatResp.Answer) > 50
-			fmt.Printf("   响应时间: %.3fs, 答案长度: %d, 相关: %v\n",
-				responseTime, len(chatResp.Answer), result.HasRelevant)
+		answer := chatResp.Answer
+		if len(answer) > 0 {
+			// 计算召回率：统计预期关键词在答案中出现的数量
+			for _, keyword := range expectedAnswers {
+				if contains(answer, keyword) {
+					result.RecallCount++
+				}
+			}
+
+			// 判断是否相关（答案长度 > 50 或召回关键词数 > 0）
+			result.HasRelevant = len(answer) > 50 || result.RecallCount > 0
+
+			recallRate := float64(result.RecallCount) / float64(len(expectedAnswers)) * 100
+			fmt.Printf("   响应时间: %.3fs, 答案长度: %d, 召回关键词: %d/%d (%.1f%%), 相关: %v\n",
+				responseTime, len(answer), result.RecallCount, len(expectedAnswers), recallRate, result.HasRelevant)
 		}
 	} else {
 		fmt.Printf("   响应时间: %.3fs, 错误: %v\n", responseTime, err)
@@ -167,6 +187,20 @@ func testRAGRetrieval(baseURL, question, expectedTopic string) RAGTestResult {
 
 	testResults.ResponseTimes = append(testResults.ResponseTimes, responseTime)
 	return result
+}
+
+// contains 检查字符串是否包含子串
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func testToolCall(baseURL, question, expectedTool string) ToolTestResult {
@@ -273,14 +307,19 @@ func generateReport() {
 	}
 	defer reportFile.Close()
 
-	// 计算RAG准确率
+	// 计算RAG准确率和召回率
 	ragCorrect := 0
+	totalRecallCount := 0
+	totalExpectedKeywords := 0
 	for _, r := range testResults.RAGTests {
 		if r.HasRelevant {
 			ragCorrect++
 		}
+		totalRecallCount += r.RecallCount
+		totalExpectedKeywords += len(r.ExpectedAnswers)
 	}
 	ragAccuracy := float64(ragCorrect) / float64(len(testResults.RAGTests)) * 100
+	ragRecall := float64(totalRecallCount) / float64(totalExpectedKeywords) * 100
 
 	// 计算工具选择正确率
 	toolCorrect := 0
@@ -326,6 +365,7 @@ func generateReport() {
 | Metric | Result |
 |------|------|
 | Retrieval Accuracy | %.1f%% (%d/%d) |
+| Retrieval Recall | %.1f%% (%d/%d) |
 | Test Questions | %d |
 
 ## 2. Tool Call Performance
@@ -343,16 +383,10 @@ func generateReport() {
 | Max Response Time | %.3fs |
 | P95 Response Time | %.3fs |
 | Sample Count | %d |
-
-## 4. Resume Data
-
-- RAG Retrieval Accuracy: %.0f%%+
-- Tool Selection Accuracy: %.0f%%+
-- Response Time: Avg %.1fs, P95 < %.0fs
-`, ragAccuracy, ragCorrect, len(testResults.RAGTests), len(testResults.RAGTests),
+`, ragAccuracy, ragCorrect, len(testResults.RAGTests),
+		ragRecall, totalRecallCount, totalExpectedKeywords, len(testResults.RAGTests),
 		toolAccuracy, toolCorrect, len(testResults.ToolTests), len(testResults.ToolTests),
-		avgTime, maxTime, p95Time, len(testResults.ResponseTimes),
-		ragAccuracy, toolAccuracy, avgTime, p95Time+1)
+		avgTime, maxTime, p95Time, len(testResults.ResponseTimes))
 
 	reportFile.WriteString(report)
 
