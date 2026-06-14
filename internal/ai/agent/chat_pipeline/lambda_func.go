@@ -81,12 +81,29 @@ func newDocsToChatVariablesLambda(ctx context.Context, input map[string]any, opt
 // createCompleteRagLambda 创建一个带有 retriever 的 Lambda，处理完整的 RAG 流程
 func createCompleteRagLambda(rtr retriever.Retriever) (*compose.Lambda, error) {
 	handler := func(ctx context.Context, input *UserMessage, opts ...any) (output map[string]any, err error) {
-		config.Info("[Lambda-CompleteRag] 输入: ID=%s, Query=%s", input.ID, input.Query)
+		config.Info("[Lambda-CompleteRag] ========== 开始处理 ==========")
+		config.Info("[Lambda-CompleteRag] 会话ID: %s", input.ID)
+		config.Info("[Lambda-CompleteRag] 用户问题: %s", input.Query)
+		config.Info("[Lambda-CompleteRag] 历史记录数量: %d", len(input.History))
+		
+		// 记录历史消息详情
+		if len(input.History) > 0 {
+			for i, msg := range input.History {
+				content := msg.Content
+				if len(content) > 100 {
+					content = content[:100] + "..."
+				}
+				config.Info("[Lambda-CompleteRag] 历史[%d]: Role=%s, Content=%s", 
+					i, msg.Role, content)
+			}
+		}
 
 		config.Info("[Lambda-CompleteRag] 开始检索文档...")
 		docs, err := rtr.Retrieve(ctx, input.Query)
 		if err != nil {
-			config.Warn("[Lambda-CompleteRag] 检索失败: %v", err)
+			config.Error("[Lambda-CompleteRag] 检索失败: %v", err)
+			config.Error("[Lambda-CompleteRag] 会话ID: %s, 查询: %s", input.ID, input.Query)
+			config.Error("[Lambda-CompleteRag] 历史记录数量: %d", len(input.History))
 			docs = []*schema.Document{}
 		} else {
 			config.Info("[Lambda-CompleteRag] 检索到 %d 个文档", len(docs))
@@ -114,7 +131,10 @@ func createCompleteRagLambda(rtr retriever.Retriever) (*compose.Lambda, error) {
 			"date":      time.Now().Format("2006-01-02 15:04:05"),
 		}
 
-		config.Info("[Lambda-CompleteRag] 输出: documents_length=%d, query_length=%d", len(outputDocs), len(input.Query))
+		config.Info("[Lambda-CompleteRag] 检索文档数量: %d", len(docs))
+		config.Info("[Lambda-CompleteRag] 文档内容长度: %d", len(outputDocs))
+		config.Info("[Lambda-CompleteRag] 历史记录传递: %d 条", len(input.History))
+		config.Info("[Lambda-CompleteRag] ========== 处理完成 ==========")
 		return result, nil
 	}
 

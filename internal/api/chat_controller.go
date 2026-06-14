@@ -82,7 +82,7 @@ func (cc *ChatController) Chat(c *gin.Context) {
 		Query:   req.Question,
 		History: mem.GetSimpleMemory(req.Id).GetMessages(),
 	}
-	config.Info("[ChatController] 用户消息构建完成")
+	config.Info("[ChatController] 用户消息构建完成，当前历史记录数: %d", len(userMessage.History))
 
 	// 步骤4: 调用 Runner 进行推理
 	config.Info("[ChatController] 调用 Chat Agent...")
@@ -98,10 +98,18 @@ func (cc *ChatController) Chat(c *gin.Context) {
 	}
 
 	// 步骤5: 更新对话历史
-	config.Info("[ChatController] 更新对话历史...")
+	config.Info("[ChatController] ========== 更新对话历史 ==========")
+	config.Info("[ChatController] 会话ID: %s", req.Id)
+	config.Info("[ChatController] 用户消息: %s", truncateText(req.Question, 100))
+	config.Info("[ChatController] AI回复: %s", truncateText(out.Content, 100))
+
+	// 使用框架辅助函数（符合规范）
 	mem.GetSimpleMemory(req.Id).SetMessages(schema.UserMessage(req.Question))
 	mem.GetSimpleMemory(req.Id).SetMessages(schema.AssistantMessage(out.Content, nil))
-	config.Info("[ChatController] 对话历史更新完成")
+
+	currentHistory := mem.GetSimpleMemory(req.Id).GetMessages()
+	config.Info("[ChatController] 当前历史记录总数: %d", len(currentHistory))
+	config.Info("[ChatController] ========== 历史更新完成 ==========")
 
 	// 步骤6: 返回响应
 	config.Info("[ChatController] ========== 响应准备完成 ==========")

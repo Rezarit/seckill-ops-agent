@@ -14,15 +14,23 @@ import (
 // Config 应用全局配置结构体
 // 包含服务器、数据库、AI模型等所有配置项
 type Config struct {
-	Server      ServerConfig   // 服务器配置
-	Database    DatabaseConfig // 数据库配置（秒杀系统）
-	DoubaoChat  ModelConfig    // 豆包思考模型配置
-	DoubaoQuick ModelConfig    // 豆包快速模型配置
-	DoubaoEmb   ModelConfig    // 豆包嵌入模型配置
-	DSTHINK     ModelConfig    // 大模型思考配置
-	DSQUICK     ModelConfig    // 大模型快速配置
-	MCPURL      string         // MCP服务地址
-	FileDir     string         // 文件存储目录
+	Server      ServerConfig     // 服务器配置
+	Database    DatabaseConfig   // 数据库配置（秒杀系统）
+	DoubaoChat  ModelConfig      // 豆包思考模型配置
+	DoubaoQuick ModelConfig      // 豆包快速模型配置
+	DoubaoEmb   ModelConfig      // 豆包嵌入模型配置
+	DSTHINK     ModelConfig      // 大模型思考配置
+	DSQUICK     ModelConfig      // 大模型快速配置
+	MCPURL      string           // MCP服务地址
+	FileDir     string           // 文件存储目录
+	Prometheus  PrometheusConfig // Prometheus监控配置
+}
+
+// PrometheusConfig Prometheus监控配置
+type PrometheusConfig struct {
+	URL     string // Prometheus服务地址
+	Timeout int    // 请求超时时间（秒）
+	Enabled bool   // 是否启用
 }
 
 // ServerConfig 服务器配置
@@ -127,6 +135,11 @@ func InitConfig() error {
 		},
 		MCPURL:  viper.GetString("mcp_url"),
 		FileDir: viper.GetString("file_dir"),
+		Prometheus: PrometheusConfig{
+			URL:     viper.GetString("prometheus.url"),
+			Timeout: viper.GetInt("prometheus.timeout"),
+			Enabled: viper.GetBool("prometheus.enabled"),
+		},
 	}
 
 	// 设置默认端口
@@ -147,6 +160,7 @@ func InitConfig() error {
 	Info("[Config] 文件目录: %s", AppConfig.FileDir)
 	Info("[Config] 聊天模型: %s", AppConfig.DoubaoChat.Model)
 	Info("[Config] 嵌入模型: %s (维度: %d)", AppConfig.DoubaoEmb.Model, AppConfig.DoubaoEmb.EmbeddingDim)
+	Info("[Config] Prometheus: %s (启用: %v, 超时: %ds)", AppConfig.Prometheus.URL, AppConfig.Prometheus.Enabled, AppConfig.Prometheus.Timeout)
 
 	return nil
 }
