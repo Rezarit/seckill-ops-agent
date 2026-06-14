@@ -37,3 +37,9 @@ seckill_database:
   user: "root"
   password: "fzfz1314"
   dbname: "go_seckill_system"
+
+# Prometheus 监控配置
+prometheus:
+  url: "http://localhost:9090"
+  timeout: 10
+  enabled: true
