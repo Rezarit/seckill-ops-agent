@@ -1,3 +1,7 @@
+# SuperBizAgent 依赖服务
+# 端口通过 .env 文件配置，不同环境使用不同 .env 即可
+# 启动: docker compose --env-file .env up -d
+
 services:
   etcd:
     container_name: milvus-etcd
@@ -22,9 +26,7 @@ services:
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
-    ports:
-      - "9001:9001"
-      - "9000:9000"
+    # 仅容器内网通信，不暴露宿主机端口
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
     command: minio server /minio_data --console-address ":9001"
@@ -52,22 +54,22 @@ services:
       timeout: 20s
       retries: 3
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_HEALTH_PORT:-9091}:9091"
     depends_on:
       - "etcd"
       - "minio"
-  # 这是新增的 Attu 服务哦！
+
   attu:
     container_name: milvus-attu
     image: zilliz/attu:v2.6
     ports:
-      - "8000:3000" # 把本地的 8000 端口映射到容器的 3000 端口 (Attu 默认端口)
+      - "${ATTU_PORT:-8000}:3000"
     environment:
-      # MILVUS_URL 指向 Docker 网络里的 Milvus standalone 服务
       MILVUS_URL: standalone:19530
     depends_on:
-      - standalone # 确保 Milvus 启动后再启动 Attu
+      - standalone
+
 networks:
   default:
     name: milvus

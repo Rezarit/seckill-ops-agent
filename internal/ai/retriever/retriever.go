@@ -1,6 +1,6 @@
 // Package retriever 提供向量检索功能封装
 // 实现基于 Milvus 的 RAG 检索，将用户查询转换为向量后进行相似度搜索
-// 使用 sync.Once 保证全局单例
+// 使用 mutex 双检锁保证全局单例，同时支持失败后自动重试
 package retriever
 
 import (
@@ -20,10 +20,9 @@ import (
 )
 
 var (
-	milvusRetriever     retriever.Retriever // 全局单例检索器
-	milvusRetrieverOnce sync.Once           // 确保只初始化一次
-	milvusRetrieverErr  error               // 初始化错误
-	milvusRetrieverMu   sync.RWMutex        // 检索器访问锁
+	milvusRetriever    retriever.Retriever // 全局单例检索器
+	milvusRetrieverErr error               // 初始化错误
+	milvusRetrieverMu  sync.RWMutex        // 检索器访问锁
 )
 
 // GetMilvusRetriever 获取全局单例 Milvus Retriever
@@ -48,18 +47,14 @@ func GetMilvusRetriever(ctx context.Context) (retriever.Retriever, error) {
 		return milvusRetriever, milvusRetrieverErr
 	}
 	
-	// 允许重试：重置错误状态
-	milvusRetrieverOnce = sync.Once{}
-	
-	milvusRetrieverOnce.Do(func() {
-		config.Info("[Retriever] ========== 初始化 Milvus Retriever（支持重试）==========")
-		milvusRetriever, milvusRetrieverErr = initMilvusRetriever(ctx)
-		if milvusRetrieverErr != nil {
-			config.Error("[Retriever] Retriever 初始化失败: %v", milvusRetrieverErr)
-		} else {
-			config.Info("[Retriever] Retriever 初始化成功")
-		}
-	})
+		// 执行初始化（支持失败后自动重试）
+	config.Info("[Retriever] ========== 初始化 Milvus Retriever（支持重试）==========")
+	milvusRetriever, milvusRetrieverErr = initMilvusRetriever(ctx)
+	if milvusRetrieverErr != nil {
+		config.Error("[Retriever] Retriever 初始化失败: %v", milvusRetrieverErr)
+	} else {
+		config.Info("[Retriever] Retriever 初始化成功")
+	}
 	return milvusRetriever, milvusRetrieverErr
 }
 

@@ -55,7 +55,40 @@ type SimpleMemory struct {
 func (c *SimpleMemory) SetMessages(msg *schema.Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.setMessagesUnsafe(msg)
+}
 
+// GetMessages 获取当前会话的所有消息（线程安全）
+// 返回: 消息列表的副本
+func (c *SimpleMemory) GetMessages() []*schema.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Messages
+}
+
+// Lock 获取会话级别的排他锁
+// 用于将"读历史→推理→写历史"整个过程原子化，防止并发请求互相覆盖
+func (c *SimpleMemory) Lock() {
+	c.mu.Lock()
+}
+
+// Unlock 释放会话级别的排他锁
+func (c *SimpleMemory) Unlock() {
+	c.mu.Unlock()
+}
+
+// GetMessagesUnsafe 获取消息列表（不加锁，调用者需持有 Lock）
+func (c *SimpleMemory) GetMessagesUnsafe() []*schema.Message {
+	return c.Messages
+}
+
+// SetMessagesUnsafe 添加消息（不加锁，调用者需持有 Lock）
+func (c *SimpleMemory) SetMessagesUnsafe(msg *schema.Message) {
+	c.setMessagesUnsafe(msg)
+}
+
+// setMessagesUnsafe 添加消息的内部实现（不加锁）
+func (c *SimpleMemory) setMessagesUnsafe(msg *schema.Message) {
 	// 添加新消息
 	c.Messages = append(c.Messages, msg)
 
@@ -69,13 +102,4 @@ func (c *SimpleMemory) SetMessages(msg *schema.Message) {
 		// 丢弃前面的消息，保持最新的对话
 		c.Messages = c.Messages[excess:]
 	}
-}
-
-// GetMessages 获取当前会话的所有消息
-// 返回: 消息列表的副本（线程安全）
-func (c *SimpleMemory) GetMessages() []*schema.Message {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.Messages
 }

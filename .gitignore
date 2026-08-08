@@ -1,6 +1,9 @@
 # 敏感配置文件（包含 API Keys 和数据库密码）
 config.yaml
 
+# Docker 环境变量（.env.example 为模板，.env 为本地配置）
+manifest/docker/.env
+
 # Docker 卷目录（数据库数据文件）
 manifest/docker/volumes/
 

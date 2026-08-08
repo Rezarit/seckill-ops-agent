@@ -3,7 +3,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"SuperBizAgent/config"
 	"SuperBizAgent/internal/ai/agent/chat_pipeline"
@@ -38,10 +40,11 @@ type ChatRes struct {
 // 执行流程:
 // 1. 解析请求参数
 // 2. 获取聊天 Runner
-// 3. 构建用户消息（包含历史记录）
-// 4. 调用 Runner 进行推理
-// 5. 更新对话历史
-// 6. 返回响应
+// 3. 获取会话锁（原子化"读历史→推理→写历史"）
+// 4. 构建用户消息（包含历史记录）
+// 5. 调用 Runner 进行推理（5分钟超时）
+// 6. 更新对话历史
+// 7. 返回响应
 func (cc *ChatController) Chat(c *gin.Context) {
 	config.Info("[ChatController] ========== 收到聊天请求 ==========")
 
@@ -75,18 +78,27 @@ func (cc *ChatController) Chat(c *gin.Context) {
 	}
 	config.Info("[ChatController] 聊天 Runner 获取成功")
 
-	// 步骤3: 构建用户消息（包含历史记录）
+	// 步骤3: 获取会话锁，确保"读历史→推理→写历史"整个过程原子化
+	// 防止同一 session 的并发请求互相覆盖对话历史
+	config.Info("[ChatController] 获取会话锁 (session: %s)...", req.Id)
+	sessionMem := mem.GetSimpleMemory(req.Id)
+	sessionMem.Lock()
+	defer sessionMem.Unlock()
+
+	// 步骤4: 构建用户消息（包含历史记录）
 	config.Info("[ChatController] 构建用户消息...")
 	userMessage := &chat_pipeline.UserMessage{
 		ID:      req.Id,
 		Query:   req.Question,
-		History: mem.GetSimpleMemory(req.Id).GetMessages(),
+		History: sessionMem.GetMessagesUnsafe(),
 	}
 	config.Info("[ChatController] 用户消息构建完成，当前历史记录数: %d", len(userMessage.History))
 
-	// 步骤4: 调用 Runner 进行推理
+	// 步骤5: 调用 Runner 进行推理（设置 5 分钟超时，防止 LLM 挂起导致 goroutine 泄漏）
 	config.Info("[ChatController] 调用 Chat Agent...")
-	out, err := runner.Invoke(c.Request.Context(), userMessage, compose.WithCallbacks())
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+	out, err := runner.Invoke(ctx, userMessage, compose.WithCallbacks())
 	if err != nil {
 		config.Error("[ChatController] 调用 Chat Agent 失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -97,18 +109,16 @@ func (cc *ChatController) Chat(c *gin.Context) {
 		return
 	}
 
-	// 步骤5: 更新对话历史
+	// 步骤6: 更新对话历史（调用者持有会话锁，使用 Unsafe 版本）
 	config.Info("[ChatController] ========== 更新对话历史 ==========")
 	config.Info("[ChatController] 会话ID: %s", req.Id)
 	config.Info("[ChatController] 用户消息: %s", truncateText(req.Question, 100))
 	config.Info("[ChatController] AI回复: %s", truncateText(out.Content, 100))
 
-	// 使用框架辅助函数（符合规范）
-	mem.GetSimpleMemory(req.Id).SetMessages(schema.UserMessage(req.Question))
-	mem.GetSimpleMemory(req.Id).SetMessages(schema.AssistantMessage(out.Content, nil))
+	sessionMem.SetMessagesUnsafe(schema.UserMessage(req.Question))
+	sessionMem.SetMessagesUnsafe(schema.AssistantMessage(out.Content, nil))
 
-	currentHistory := mem.GetSimpleMemory(req.Id).GetMessages()
-	config.Info("[ChatController] 当前历史记录总数: %d", len(currentHistory))
+	config.Info("[ChatController] 当前历史记录总数: %d", len(sessionMem.GetMessagesUnsafe()))
 	config.Info("[ChatController] ========== 历史更新完成 ==========")
 
 	// 步骤6: 返回响应

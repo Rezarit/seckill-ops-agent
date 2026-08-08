@@ -10,72 +10,14 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// newInputToRagLambda component initialization function of node 'InputToQuery' in graph 'EinoAgent'
-func newInputToRagLambda(ctx context.Context, input *UserMessage, opts ...any) (output string, err error) {
-	config.Info("[Lambda-InputToRag] 输入: ID=%s, Query=%s", input.ID, input.Query)
-	config.Info("[Lambda-InputToRag] 输出: query_length=%d", len(input.Query))
-	return input.Query, nil
-}
-
-// newInputToChatLambda component initialization function of node 'InputToHistory' in graph 'EinoAgent'
-func newInputToChatLambda(ctx context.Context, input *UserMessage, opts ...any) (output map[string]any, err error) {
-	return map[string]any{
-		"documents": "",
-		"content":   input.Query,
-		"history":   input.History,
-		"date":      time.Now().Format("2006-01-02 15:04:05"),
-	}, nil
-}
-
-// newDocsToChatVariablesLambda converts retrieved documents to chat template variables
-func newDocsToChatVariablesLambda(ctx context.Context, input map[string]any, opts ...any) (output map[string]any, err error) {
-	// Extract documents from input map
-	var docs []*schema.Document
-	if docsInterface, ok := input["documents"]; ok {
-		if docsSlice, ok := docsInterface.([]interface{}); ok {
-			for _, docInterface := range docsSlice {
-				if doc, ok := docInterface.(*schema.Document); ok {
-					docs = append(docs, doc)
-				}
-			}
-		}
+// truncateByRune 按字符（rune）截断字符串，避免在多字节 UTF-8 字符中间切断
+// maxLen 为 rune 数量上限
+func truncateByRune(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
 	}
-
-	config.Info("[Lambda] Extracted %d documents", len(docs))
-
-	// Build context from retrieved documents
-	var documentsContent string
-	for _, doc := range docs {
-		if doc.Content != "" {
-			if documentsContent != "" {
-				documentsContent += "\n\n"
-			}
-			documentsContent += doc.Content
-		}
-	}
-
-	// Get query from input if available
-	var queryContent string
-	if query, ok := input["query"]; ok {
-		if q, ok := query.(string); ok {
-			queryContent = q
-		}
-	}
-
-	config.Info("[Lambda] Built context: documents_length=%d, query_length=%d", len(documentsContent), len(queryContent))
-
-	// 限制最终输出的 documents 长度
-	outputDocs := documentsContent
-	if len(outputDocs) > 500 {
-		outputDocs = outputDocs[:500] + "...[truncated]"
-	}
-
-	return map[string]any{
-		"documents": outputDocs,
-		"content":   queryContent,
-		"history":   []*schema.Message{},
-		"date":      time.Now().Format("2006-01-02 15:04:05"),
-	}, nil
+	return string(runes[:maxLen]) + "...[truncated]"
 }
 
 // createCompleteRagLambda 创建一个带有 retriever 的 Lambda，处理完整的 RAG 流程
@@ -119,10 +61,7 @@ func createCompleteRagLambda(rtr retriever.Retriever) (*compose.Lambda, error) {
 			}
 		}
 
-		outputDocs := documentsContent
-		if len(outputDocs) > 500 {
-			outputDocs = outputDocs[:500] + "...[truncated]"
-		}
+		outputDocs := truncateByRune(documentsContent, 500)
 
 		result := map[string]any{
 			"documents": outputDocs,
